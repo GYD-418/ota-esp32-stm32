@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>WiFi Configuration</title>
+<style>
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #f5f5f5;
+}
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.checkmark {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 24px;
+}
+.message {
+    text-align: center;
+    font-size: 20px;
+    color: #333;
+}
+.message p:first-child {
+    font-weight: bold;
+    color: #4CAF50;
+}
+.message p:last-child {
+    color: #888;
+    font-size: 14px;
+    margin-top: 8px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <svg class="checkmark" viewBox="0 0 52 52">
+        <circle cx="26" cy="26" r="25" fill="none" stroke="#4CAF50" stroke-width="2"/>
+        <path fill="none" stroke="#4CAF50" stroke-width="3" stroke-linecap="round" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+    </svg>
+    <div class="message">
+        <p>配置成功！</p>
+        <p>Configuration successful!</p>
+    </div>
+</div>
+<script>
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        fetch('/exit', { method: 'POST' })
+        .then(function(r) { console.log('Exit config mode request sent'); })
+        .catch(function(e) { console.error('Error:', e); });
+    }, 1000);
+});
+</script>
+</body>
+</html>

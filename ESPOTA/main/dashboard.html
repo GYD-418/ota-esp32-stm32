@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>ESP32-OTA 仪表盘</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f5f5;color:#333}
+.container{max-width:420px;margin:0 auto;padding:16px}
+h1{text-align:center;margin:20px 0;color:#2c3e50;font-size:1.4em}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+.btn{display:block;width:100%;padding:12px;border:none;border-radius:8px;font-size:16px;cursor:pointer;text-align:center;transition:all 0.2s;margin-top:8px}
+.btn-primary{background:#2196F3;color:#fff}
+.btn-primary:hover{background:#1976D2}
+.btn-primary:disabled{background:#ccc;cursor:not-allowed}
+input[type="text"]{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin:6px 0}
+label{font-weight:600;color:#555;font-size:13px;display:block;margin-top:8px}
+h3{margin:12px 0 8px;color:#555;font-size:13px}
+.version{font-family:monospace;font-size:18px;color:#2196F3;font-weight:bold}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px}
+.status-ok{background:#e8f5e9;color:#4CAF50}
+.status-old{background:#fff3e0;color:#FF9800}
+.progress-bar{width:100%;height:20px;background:#e0e0e0;border-radius:10px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;background:#2196F3;width:0%;transition:width 0.3s;border-radius:10px}
+.hidden{display:none}
+.log{background:#263238;color:#aed581;padding:12px;border-radius:8px;font-size:12px;font-family:monospace;max-height:180px;overflow-y:auto;margin-top:8px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>ESP32-OTA 仪表盘</h1>
+
+<div class="card">
+  <h3>固件版本</h3>
+  <span class="version" id="currentVersion">--</span>
+  <span class="status-badge status-ok hidden" id="statusBadge">最新</span>
+</div>
+
+<div class="card">
+  <h3>ESP32 OTA 固件升级</h3>
+  <label>固件 URL</label>
+  <input type="text" id="firmwareUrl" placeholder="http://192.168.x.x:8080/firmware.bin">
+  <button class="btn btn-primary" id="btnUpdate" onclick="startOta()">开始升级</button>
+
+  <div id="progressSection" class="hidden">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <span id="progressText" style="font-size:13px;color:#666">0%</span>
+  </div>
+
+  <div class="log hidden" id="logBox"></div>
+</div>
+
+<div class="card">
+  <h3>STM32 OTA 固件升级</h3>
+  <label>STM32 固件 URL</label>
+  <input type="text" id="stm32Url" placeholder="http://192.168.x.x:8080/stm32_firmware.bin">
+  <button class="btn btn-primary" id="btnStm32Update" onclick="startStm32Ota()">升级 STM32</button>
+
+  <div id="stm32ProgressSection" class="hidden">
+    <div class="progress-bar">
+      <div class="progress-fill" id="stm32ProgressFill" style="background:#FF9800"></div>
+    </div>
+    <span id="stm32ProgressText" style="font-size:13px;color:#666">0%</span>
+  </div>
+</div>
+</div>
+
+<script>
+var checking = false;
+
+function log(msg) {
+  var box = document.getElementById('logBox');
+  box.classList.remove('hidden');
+  box.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+  box.scrollTop = box.scrollHeight;
+}
+
+function loadVersion() {
+  fetch('/api/version')
+    .then(function(r){return r.json()})
+    .then(function(data) {
+      document.getElementById('currentVersion').textContent = data.version;
+      if (data.pending) {
+        document.getElementById('statusBadge').textContent = '新版本待重启';
+        document.getElementById('statusBadge').className = 'status-badge status-old';
+        document.getElementById('statusBadge').classList.remove('hidden');
+      }
+    })
+    .catch(function(){});
+}
+
+function startOta() {
+  var url = document.getElementById('firmwareUrl').value;
+  if (!url) { alert('请输入固件 URL'); return; }
+
+  var btn = document.getElementById('btnUpdate');
+  btn.disabled = true;
+  btn.textContent = '升级中...';
+  document.getElementById('progressSection').classList.remove('hidden');
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressText').textContent = '0%';
+
+  log('开始下载: ' + url);
+
+  fetch('/api/ota/update', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url: url})
+  }).then(function(r){return r.json()}).then(function(data) {
+    if (data.success) {
+      log('固件下载完成，设备即将重启...');
+      document.getElementById('progressFill').style.width = '100%';
+      document.getElementById('progressText').textContent = '100% - 重启中...';
+      checkStatus();
+    } else {
+      log('错误: ' + (data.error || '未知'));
+      btn.disabled = false;
+      btn.textContent = '开始升级';
+    }
+  }).catch(function(e){
+    log('请求失败: ' + e);
+    btn.disabled = false;
+    btn.textContent = '开始升级';
+  });
+}
+
+function checkStatus() {
+  fetch('/api/ota/status').then(function(r){return r.json()}).then(function(data) {
+    if (!data.running) {
+      log('设备已重启，刷新页面...');
+      setTimeout(function(){ location.reload(); }, 3000);
+    } else {
+      setTimeout(checkStatus, 1000);
+    }
+  }).catch(function() {
+    log('设备可能已重启，等待...');
+    setTimeout(function(){ location.reload(); }, 3000);
+  });
+}
+
+function startStm32Ota() {
+  var url = document.getElementById('stm32Url').value;
+  if (!url) { alert('请输入 STM32 固件 URL'); return; }
+
+  var btn = document.getElementById('btnStm32Update');
+  btn.disabled = true;
+  btn.textContent = '升级中...';
+  document.getElementById('stm32ProgressSection').classList.remove('hidden');
+  document.getElementById('stm32ProgressFill').style.width = '0%';
+  document.getElementById('stm32ProgressText').textContent = '0%';
+
+  fetch('/api/stm32/update', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url: url})
+  }).then(function(r){return r.json()}).then(function(data) {
+    if (data.success) {
+      document.getElementById('stm32ProgressFill').style.width = '100%';
+      document.getElementById('stm32ProgressText').textContent = 'STM32 升级完成';
+      btn.textContent = '完成';
+    } else {
+      alert('STM32 升级失败: ' + (data.error || '未知'));
+      btn.disabled = false;
+      btn.textContent = '升级 STM32';
+    }
+  }).catch(function(e){
+    alert('请求失败: ' + e);
+    btn.disabled = false;
+    btn.textContent = '升级 STM32';
+  });
+}
+
+loadVersion();
+</script>
+</body>
+</html>
